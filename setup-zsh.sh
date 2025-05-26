@@ -328,7 +328,7 @@ setopt no_clobber
 autoload -Uz compinit && compinit -u
 
 # Source Oh My Zsh (theme only)
-source $ZSH/oh-my-zsh.sh
+source "$ZSH"/oh-my-zsh.sh
 
 # CLI Tools: bat & tldr
 if ! type bat &>/dev/null; then
@@ -343,53 +343,68 @@ if ! command -v tldr &>/dev/null; then
   echo -e "\033[1;33m⚠️ Install tldr: 'npm install -g tldr'\033[0m"
 fi
 
-
-# fnm install snippet (must come before detection)
+# ─── FNM INSTALL ─────────────────────────────────────────────────────────────────────────────
 FNM_PATH="$HOME/.local/share/fnm"
 if [[ -d "$FNM_PATH" ]]; then
   export PATH="$FNM_PATH:$PATH"
-  eval "$(fnm env)"        # sets up auto‐cd hook
+  eval "$(fnm env --use-on-cd)"
 fi
 
-# Node Version Management
+# ─── LOAD-NVMRC FUNCTION ──────────────────────────────────────────────────────────────────────
+load-nvmrc() {
+  [[ -n "$NVMRC_ACTIVE" ]] && return
+  NVMRC_ACTIVE=1
+  (( EPOCHSECONDS - ${_NVMRC_CACHE_TIME:-0} > 1 )) && unset _NVMRC_PATH_CACHE
+  if ! command -v nvm &>/dev/null; then
+    echo -e "\033[0;31m✗ nvm not loaded\033[0m" >&2
+    unset NVMRC_ACTIVE; return 1
+  fi
+  local current desired nvmrc_path
+  current=$(nvm version)
+  nvmrc_path=${_NVMRC_PATH_CACHE:-$(nvm_find_nvmrc)}
+  if [[ -n "$nvmrc_path" ]]; then
+    desired=$(<"$nvmrc_path"); desired=${desired//[$'\t\r\n ']/}
+    if [[ -z "$desired" || "$desired" =~ [^a-zA-Z0-9./*-] ]]; then
+      echo -e "\033[0;31m✗ Invalid .nvmrc: ${desired:-empty}\033[0m" >&2
+      unset NVMRC_ACTIVE _NVMRC_PATH_CACHE; return 1
+    fi
+    if [[ "$desired" != "$current" ]]; then
+      if ! nvm ls "$desired" &>/dev/null; then
+        echo -e "\033[1;36m⌛ Installing Node $desired...\033[0m"
+        nvm install "$desired" >/dev/null 2>&1 || {
+          echo -e "\033[0;31m✗ Install failed\033[0m" >&2
+          unset NVMRC_ACTIVE _NVMRC_PATH_CACHE; return 1
+        }
+      fi
+      nvm use "$desired" >/dev/null 2>&1 && echo -e "\033[1;32m✓ Node $desired\033[0m"
+    else
+      echo -e "\033[1;33mℹ️ Node $desired active\033[0m"
+    fi
+    _NVMRC_PATH_CACHE=$nvmrc_path; _NVMRC_CACHE_TIME=$EPOCHSECONDS
+  elif [[ "$current" != "system" ]]; then
+    if nvm ls system | grep -q '(not installed)'; then
+      echo -e "\033[0;33m⚠️ System Node unavailable. Staying with $current\033[0m"
+    else
+      nvm use system >/dev/null 2>&1
+    fi
+  fi
+}
+
+# ─── DETECT NODE MANAGER ──────────────────────────────────────────────────────────────────────
 NODE_VERSION_MANAGER="none"
 if command -v fnm &>/dev/null; then
-  # fnm is on PATH, use it
   NODE_VERSION_MANAGER="fnm"
 elif [[ -s "$HOME/.nvm/nvm.sh" ]]; then
-  # fallback to nvm
   export NVM_DIR="$HOME/.nvm"
   . "$NVM_DIR/nvm.sh"
   . "$NVM_DIR/bash_completion"
   NODE_VERSION_MANAGER="nvm"
 fi
 
-
-# Feedback & auto-switch
-case "$NODE_VERSION_MANAGER" in
-  fnm)
-    if [[ -z "$FNM_ALREADY_INIT" ]]; then
-      echo -e "✓ Using fnm for Node.js version management"
-      eval "$(fnm env --use-on-cd)"
-      echo -e "✓ fnm auto-switch active"
-      export FNM_ALREADY_INIT=1
-    fi
-    ;;
-  nvm)
-    echo -e "⚠️ Using nvm fallback (fnm not found)"
-    autoload -U add-zsh-hook
-    add-zsh-hook chpwd load-nvmrc
-    load-nvmrc
-    echo -e "⚠️ nvm fallback auto-switch active"
-    ;;
-  *)
-    echo -e "❌ No Node version manager found. Install fnm or nvm."
-    ;;
-esac
-
-# Auto Version Switching
+# ─── ZSH HOOK SUPPORT ─────────────────────────────────────────────────────────────────────────
 autoload -U add-zsh-hook
 
+# ─── VERSION SWITCH FUNCTION ──────────────────────────────────────────────────────────────────
 node_version_check() {
   [[ "$NODE_VERSION_MANAGER" == "none" ]] && return
   if [[ -f .nvmrc || -f .node-version ]]; then
@@ -424,59 +439,29 @@ node_version_check() {
   fi
 }
 
-load-nvmrc() {
-  [[ -n "$NVMRC_ACTIVE" ]] && return
-  NVMRC_ACTIVE=1
-  (( EPOCHSECONDS - ${_NVMRC_CACHE_TIME:-0} > 1 )) && unset _NVMRC_PATH_CACHE
-  if ! command -v nvm &>/dev/null; then
-    echo -e "\033[0;31m✗ nvm not loaded\033[0m" >&2
-    unset NVMRC_ACTIVE; return 1
-  fi
-  local current desired nvmrc_path
-  current=$(nvm version)
-  nvmrc_path=${_NVMRC_PATH_CACHE:-$(nvm_find_nvmrc)}
-  if [[ -n "$nvmrc_path" ]]; then
-    desired=$(<"$nvmrc_path"); desired=${desired//[$'\t\r\n ']/}
-    if [[ -z "$desired" || "$desired" =~ [^a-zA-Z0-9./*-] ]]; then
-      echo -e "\033[0;31m✗ Invalid .nvmrc: ${desired:-empty}\033[0m" >&2
-      unset NVMRC_ACTIVE _NVMRC_PATH_CACHE; return 1
+# ─── FEEDBACK (SHOW ONCE) ─────────────────────────────────────────────────────────────────────
+case "$NODE_VERSION_MANAGER" in
+  fnm)
+    if [[ -z "$FNM_ALREADY_INIT" ]]; then
+      echo -e "\033[1;32m✓ Using fnm for Node.js version management\033[0m"
+      echo -e "\033[1;32m✓ fnm auto-switch active\033[0m"
+      export FNM_ALREADY_INIT=1
     fi
-    if [[ "$desired" != "$current" ]]; then
-      if ! nvm ls "$desired" &>/dev/null; then
-        echo -e "\033[1;36m⌛ Installing Node $desired...\033[0m"
-        nvm install "$desired" >/dev/null 2>&1 || {
-          echo -e "\033[0;31m✗ Install failed\033[0m" >&2
-          unset NVMRC_ACTIVE _NVMRC_PATH_CACHE; return 1
-        }
-      fi
-      nvm use "$desired" >/dev/null 2>&1 && echo -e "\033[1;32m✓ Node $desired\033[0m"
-    else
-      echo -e "\033[1;33mℹ️ Node $desired active\033[0m"
-    fi
-    _NVMRC_PATH_CACHE=$nvmrc_path; _NVMRC_CACHE_TIME=$EPOCHSECONDS
-  elif [[ "$current" != "system" ]]; then
-    if nvm ls system | grep -q '(not installed)'; then
-      echo -e "\033[0;33m⚠️ System Node unavailable\033[0m" >&2
-      unset NVMRC_ACTIVE; return 1
-    fi
-    nvm use system >/dev/null 2>&1 && echo -e "\033[1;34m↩ System Node activated\033[0m"
-  fi
-  unset NVMRC_ACTIVE
-}
+    ;;
+  nvm)
+    echo -e "\033[1;33m⚠️ Using nvm fallback (fnm not found)\033[0m"
+    echo -e "\033[1;33m⚠️ nvm fallback auto-switch active\033[0m"
+    ;;
+  *)
+    echo -e "\033[1;31m❌ No Node.js version manager available\033[0m"
+    ;;
+esac
 
-# Always show auto-switch banners
-if [[ "$NODE_VERSION_MANAGER" == "fnm" ]]; then
-  echo -e "\033[1;32m✓ fnm auto-switch active\033[0m"
-elif [[ "$NODE_VERSION_MANAGER" == "nvm" ]]; then
-  add-zsh-hook chpwd load-nvmrc
-  load-nvmrc
-  echo -e "\033[1;33m⚠️ nvm fallback auto-switch active\033[0m"
-else
-  echo -e "\033[1;31m❌ No Node.js version manager available for auto-switching\033[0m"
-fi
-
+# ─── ADD AUTO HOOKS ───────────────────────────────────────────────────────────────────────────
+[[ "$NODE_VERSION_MANAGER" == "nvm" ]] && add-zsh-hook chpwd load-nvmrc
 add-zsh-hook chpwd node_version_check
 node_version_check
+
 
 # Aliases
 alias nr="npm run"
