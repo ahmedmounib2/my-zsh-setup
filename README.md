@@ -1,7 +1,5 @@
 # Professional Zsh Environment Setup for MERN Stack (Optimized for WSL)
 
-![Terminal Demo Screenshot](https://user-images.githubusercontent.com/704406/114582739-0a1c2d00-9c8e-11eb-9a7b-421d86988a7f.png)
-
 This is a complete, ready-to-use Zsh environment setup tailored for MERN stack developers working primarily on Windows Subsystem for Linux (WSL). It combines modern tooling, smart version management, and optimized plugins to create a smooth, productive terminal experience.
 
 ---
