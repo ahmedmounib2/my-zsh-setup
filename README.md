@@ -179,6 +179,96 @@ fnm use 20 --install && fnm default 20
 zinit compile --all
 ```
 
+## Useful commands for testing and managing Node versions with fnm and nvm
+
+### For fnm (Fast Node Manager)
+
+```bash
+# List installed Node versions managed by fnm
+fnm list
+
+# Show currently active Node version in fnm
+fnm current
+
+# Use (activate) a specific Node version with fnm
+fnm use 18.20.2
+
+# Set a default Node version in fnm (for future shells)
+fnm default 18.20.2
+
+# Check which Node binary is active (gives path)
+which node
+
+# Check Node version (current active)
+node -v
+
+# To reload shell environment (ZSH example)
+exec zsh
+```
+
+### For nvm (Node Version Manager)
+
+```bash
+# List installed Node versions managed by nvm
+nvm ls
+
+# Show currently active Node version in nvm
+nvm current
+
+# Use (activate) a specific Node version with nvm
+nvm use 18.20.2
+
+# Set a default Node version in nvm (used when opening new shells)
+nvm alias default 18.20.2
+
+# Show system Node version (if any)
+nvm use system
+
+# Check which Node binary is active (gives path)
+which node
+
+# Check Node version (current active)
+node -v
+
+
+# Check if nvm is installed and working
+command -v nvm
+```
+
+### Testing PATH change and restoring it (to understand how Node version managers work)
+
+```bash
+# Print current PATH environment variable
+echo $PATH
+
+# Temporarily prepend a custom directory to PATH (like how nvm/fnm do it)
+export PATH="/custom/node/path/bin:$PATH"
+
+# Verify PATH change
+echo $PATH
+
+# Verify which node is active after PATH change
+which node
+
+# Reset PATH to original (example, replace /custom/node/path/bin with your actual value)
+export PATH=$(echo $PATH | sed -e 's|/custom/node/path/bin:||')
+
+# Verify reset
+echo $PATH
+
+# To simulate fnm being missing (so your .zshrc triggers the fallback to nvm), just rename the fnm binary like this:
+mv ~/.local/share/fnm/fnm ~/.local/share/fnm/fnm.bak
+
+# Then restart your shell or run:
+exec zsh
+
+# To restore fnm again:
+# When you're done testing and want fnm back:
+mv ~/.local/share/fnm/fnm.bak ~/.local/share/fnm/fnm
+chmod +x ~/.local/share/fnm/fnm  # Just in case
+exec zsh
+```
+
 - Maintained by: Ahmed Monib
 - Security Contact: <ahmedmounib2@gmail.com>
 - Last Updated: 2024-05-24

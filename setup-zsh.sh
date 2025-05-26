@@ -269,41 +269,246 @@ configure_zshrc() {
   [ -f "$HOME/.zshrc" ] && cp "$HOME/.zshrc" "$zshrc_backup"
 
   cat > "$HOME/.zshrc" <<'EOF'
-# Powerlevel10k Instant Prompt
+# ─── POWERLEVEL10K INSTANT PROMPT ────────────────────────────────────────────────────────────
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
-# PATH Configuration
+# ─── PATH SETUP ──────────────────────────────────────────────────────────────────────────────
 export PATH="$HOME/.npm-global/bin:$PATH"
 
-# Oh My Zsh Theme Only (Not plugins)
+# ─── CLI TOOLS CHECK ────────────────────────────────────────────────────────────────────────
+# bat (pretty cat)
+if ! type bat &>/dev/null; then
+  if command -v batcat &>/dev/null; then
+    alias bat="batcat"
+  else
+    echo -e "\033[1;33m⚠️ Install bat: 'sudo apt install bat' or 'brew install bat'\033[0m"
+  fi
+fi
+
+# tldr (simplified man)
+if ! command -v tldr &>/dev/null; then
+  echo -e "\033[1;33m⚠️ Install tldr: 'npm install -g tldr'\033[0m"
+fi
+
+# ─── NODE VERSION MANAGEMENT ────────────────────────────────────────────────
+# fnm setup (must come before detection)
+FNM_PATH="$HOME/.local/share/fnm"
+if [[ -d "$FNM_PATH" ]]; then
+  export PATH="$FNM_PATH:$PATH"
+
+  if command -v fnm &>/dev/null; then
+    eval "$(fnm env)"  # initialize fnm if available
+  else
+    echo -e "\033[1;33m⚠️ fnm not found – falling back to nvm if available\033[0m"
+  fi
+fi
+
+
+# Node Version Manager Detection
+NODE_VERSION_MANAGER="none"
+if command -v fnm &>/dev/null; then
+  NODE_VERSION_MANAGER="fnm"
+elif [[ -s "$HOME/.nvm/nvm.sh" ]]; then
+  export NVM_DIR="$HOME/.nvm"
+  . "$NVM_DIR/nvm.sh"
+  . "$NVM_DIR/bash_completion"
+  NODE_VERSION_MANAGER="nvm"
+fi
+
+# Enhanced Node Version Management
+autoload -U add-zsh-hook
+
+# Function to get current node version
+get_current_node_version() {
+  case "$NODE_VERSION_MANAGER" in
+    fnm)
+      fnm current 2>/dev/null || echo "none"
+      ;;
+    nvm)
+      nvm current 2>/dev/null || echo "none"
+      ;;
+    *)
+      echo "none"
+      ;;
+  esac
+}
+
+# Main version check function (for fnm and general cases)
+node_version_check() {
+  [[ "$NODE_VERSION_MANAGER" == "none" ]] && return
+
+  local current_version=$(get_current_node_version)
+  local version_file=""
+  [[ -f .nvmrc ]] && version_file=".nvmrc"
+  [[ -f .node-version ]] && version_file=".node-version"
+
+  if [[ -n "$version_file" ]]; then
+    local desired=$(<"$version_file")
+    desired=${desired//[$'\t\r\n ']/}
+
+    case "$NODE_VERSION_MANAGER" in
+      fnm)
+        if [[ "$current_version" != *"$desired"* ]]; then
+          echo -e "\033[1;33m⚠️ Switching to Node $desired (fnm)\033[0m"
+          fnm use "$desired" || fnm install "$desired"
+          current_version=$(get_current_node_version)
+        fi
+        echo -e "\033[1;32m✓ Using Node $current_version (from ${version_file})\033[0m"
+        ;;
+      nvm)
+        # Let load-nvmrc handle this case to avoid duplicate messages
+        load-nvmrc
+        ;;
+    esac
+  else
+    case "$NODE_VERSION_MANAGER" in
+      fnm)
+        local default_version=$(fnm default 2>/dev/null)
+        if [[ "$current_version" != *"$default_version"* ]]; then
+          echo -e "\033[1;34mℹ️ Using default Node version\033[0m"
+          fnm default
+          current_version=$(get_current_node_version)
+        fi
+        echo -e "\033[1;36mℹ️ No .nvmrc found. Current Node version: $current_version\033[0m"
+        ;;
+      nvm)
+        # Let load-nvmrc handle this case to avoid duplicate messages
+        load-nvmrc
+        ;;
+    esac
+  fi
+}
+
+# Original nvmrc loader (for nvm fallback)
+load-nvmrc() {
+  # Only run if nvm is the version manager
+  [[ "$NODE_VERSION_MANAGER" != "nvm" ]] && return
+
+  # Prevent re-entrance
+  [[ -n "$NVMRC_ACTIVE" ]] && return
+  NVMRC_ACTIVE=1
+
+  # Reset cache if older than 1 second (can adjust as needed)
+  (( EPOCHSECONDS - ${_NVMRC_CACHE_TIME:-0} > 1 )) && unset _NVMRC_PATH_CACHE
+
+  # Check that nvm command exists
+  if ! command -v nvm &>/dev/null; then
+    echo -e "\033[0;31m✗ nvm not loaded\033[0m" >&2
+    unset NVMRC_ACTIVE
+    return 1
+  fi
+
+  local current desired nvmrc_path
+  current=$(nvm current)  # get current active node version
+  nvmrc_path=${_NVMRC_PATH_CACHE:-$(nvm_find_nvmrc)}  # locate .nvmrc
+
+  if [[ -n "$nvmrc_path" ]]; then
+    desired=$(<"$nvmrc_path")           # read desired version
+    desired=${desired//[$'\t\r\n ']/}  # strip whitespace
+
+    # Validate version string (only allow alphanumeric, dot, slash, star, dash)
+    if [[ -z "$desired" || "$desired" =~ [^a-zA-Z0-9./*-] ]]; then
+      echo -e "\033[0;31m✗ Invalid .nvmrc: ${desired:-empty}\033[0m" >&2
+      unset NVMRC_ACTIVE _NVMRC_PATH_CACHE
+      return 1
+    fi
+
+    # If desired differs from current, switch versions
+    if [[ "$desired" != "$current" ]]; then
+      # If desired version not installed, install it
+      if ! nvm ls "$desired" &>/dev/null; then
+        echo -e "\033[1;36m⌛ Installing Node $desired...\033[0m"
+        if ! nvm install "$desired"; then
+          echo -e "\033[0;31m✗ Install failed\033[0m" >&2
+          unset NVMRC_ACTIVE _NVMRC_PATH_CACHE
+          return 1
+        fi
+      fi
+
+      # IMPORTANT: run 'nvm use' in current shell, show output and error if any
+      if nvm use "$desired"; then
+        echo -e "\033[1;32m✓ Node $desired activated\033[0m"
+      else
+        echo -e "\033[0;31m✗ Failed to switch to Node $desired\033[0m" >&2
+        unset NVMRC_ACTIVE _NVMRC_PATH_CACHE
+        return 1
+      fi
+    else
+      echo -e "\033[1;33mℹ️ Node $desired already active\033[0m"
+    fi
+
+    _NVMRC_PATH_CACHE=$nvmrc_path
+    _NVMRC_CACHE_TIME=$EPOCHSECONDS
+  else
+    # No .nvmrc file found - optionally fallback to system node or just print info
+    if [[ "$current" != "system" ]]; then
+      if nvm ls system | grep -q '(not installed)'; then
+        echo -e "\033[0;33m⚠️ System Node unavailable\033[0m" >&2
+        unset NVMRC_ACTIVE
+        return 1
+      fi
+      if nvm use system; then
+        echo -e "\033[1;34m↩ System Node activated\033[0m"
+      else
+        echo -e "\033[0;31m✗ Failed to activate system Node\033[0m" >&2
+        unset NVMRC_ACTIVE
+        return 1
+      fi
+    else
+      echo -e "\033[1;36mℹ️ No .nvmrc found. Current Node version: $current\033[0m"
+    fi
+  fi
+
+  unset NVMRC_ACTIVE
+}
+
+
+# Initialize version manager and hooks
+case "$NODE_VERSION_MANAGER" in
+  fnm)
+    if [[ -z "$FNM_ALREADY_INIT" ]]; then
+      echo -e "\033[1;32m✓ Using fnm for Node.js version management\033[0m"
+      eval "$(fnm env --use-on-cd)"
+      export FNM_ALREADY_INIT=1
+    fi
+    add-zsh-hook chpwd node_version_check
+    node_version_check  # Run once at startup
+    ;;
+  nvm)
+    echo -e "\033[1;33m⚠️ Using nvm fallback (fnm not found)\033[0m"
+    add-zsh-hook chpwd load-nvmrc
+    load-nvmrc  # Run once at startup
+    ;;
+  *)
+    echo -e "\033[1;31m❌ No Node version manager found. Install fnm or nvm.\033[0m"
+    ;;
+esac
+
+# ─── OH-MY-ZSH + POWERLEVEL10K ──────────────────────────────────────────────────────────────
 export ZSH="$HOME/.oh-my-zsh"
 ZSH_THEME="powerlevel10k/powerlevel10k"
 
-# Zinit Plugin Manager
+# ─── ZINIT SETUP ────────────────────────────────────────────────────────────────────────────
 if [[ ! -f ~/.zinit/bin/zinit.zsh ]]; then
   mkdir -p ~/.zinit
   git clone https://github.com/zdharma-continuum/zinit ~/.zinit/bin
 fi
 source ~/.zinit/bin/zinit.zsh
 
-# Zinit Plugins: performance boost
+# Zinit Plugins
 zinit light romkatv/zsh-defer
-
-# Language & Tooling
 zinit light zsh-users/zsh-completions
 zinit ice wait"1" silent; zinit light zsh-users/zsh-autosuggestions
 zinit ice wait"2" silent; zinit light zsh-users/zsh-syntax-highlighting
 zinit light zsh-users/zsh-history-substring-search
-
-# CLI Tools & Enhancements
 zinit light Aloxaf/fzf-tab
 zinit light rupa/z
 zinit light djui/alias-tips
 zinit light MichaelAquilina/zsh-you-should-use
 
-# Oh My Zsh Plugins via Zinit snippets
+# Oh My Zsh Plugins via Zinit
 zinit ice wait"3" silent; zinit snippet OMZ::plugins/docker
 zinit ice wait"4" silent; zinit snippet OMZ::plugins/docker-compose
 zinit snippet OMZ::plugins/command-not-found
@@ -311,7 +516,7 @@ zinit snippet OMZ::plugins/web-search
 zinit snippet OMZ::plugins/safe-paste
 zinit snippet OMZ::plugins/copybuffer
 
-# Performance & History
+# ─── PERFORMANCE, HISTORY, ENV ─────────────────────────────────────────────────────────────
 DISABLE_AUTO_UPDATE="true"
 DISABLE_UNTRACKED_FILES_DIRTY="true"
 ZSH_AUTOSUGGEST_MANUAL_REBIND="1"
@@ -330,204 +535,44 @@ autoload -Uz compinit && compinit -u
 # Source Oh My Zsh (theme only)
 source "$ZSH"/oh-my-zsh.sh
 
-# CLI Tools: bat & tldr
-if ! type bat &>/dev/null; then
-  if command -v batcat &>/dev/null; then
-    alias bat="batcat"
-  else
-    echo -e "\033[1;33m⚠️ Install bat: 'sudo apt install bat' or 'brew install bat'\033[0m"
-  fi
+# ─── GIT CONFIG (SAFE DIRECTORY) ────────────────────────────────────────────────────────────
+git config --global --add safe.directory '*'
+
+# ─── P10K CONFIGURATION ────────────────────────────────────────────────────────────────────
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+# ─── SHELL OPTIONS ──────────────────────────────────────────────────────────────────────────
+setopt prompt_subst
+setopt auto_cd
+setopt auto_pushd
+setopt pushd_ignore_dups
+setopt interactive_comments
+
+# ─── ALIASES ────────────────────────────────────────────────────────────────────────────────
+alias ls='ls --color=auto'
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+alias gs='git status'
+alias gl='git log'
+alias gp='git push'
+alias gpl='git pull'
+alias gc='git commit'
+alias ga='git add'
+alias gco='git checkout'
+alias gstash='git stash'
+alias gpop='git stash pop'
+
+# ─── FZF INTEGRATION (if installed) ────────────────────────────────────────────────────────
+if command -v fzf &>/dev/null; then
+  export FZF_DEFAULT_COMMAND='fd --type f'
+  export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+  export FZF_ALT_C_COMMAND='fd --type d'
+  export FZF_DEFAULT_OPTS="--height 40% --layout=reverse --border"
 fi
 
-if ! command -v tldr &>/dev/null; then
-  echo -e "\033[1;33m⚠️ Install tldr: 'npm install -g tldr'\033[0m"
-fi
-
-# ─── FNM INSTALL ─────────────────────────────────────────────────────────────────────────────
-FNM_PATH="$HOME/.local/share/fnm"
-if [[ -d "$FNM_PATH" ]]; then
-  export PATH="$FNM_PATH:$PATH"
-  eval "$(fnm env --use-on-cd)"
-fi
-
-# ─── LOAD-NVMRC FUNCTION ──────────────────────────────────────────────────────────────────────
-load-nvmrc() {
-  [[ -n "$NVMRC_ACTIVE" ]] && return
-  NVMRC_ACTIVE=1
-  (( EPOCHSECONDS - ${_NVMRC_CACHE_TIME:-0} > 1 )) && unset _NVMRC_PATH_CACHE
-  if ! command -v nvm &>/dev/null; then
-    echo -e "\033[0;31m✗ nvm not loaded\033[0m" >&2
-    unset NVMRC_ACTIVE; return 1
-  fi
-  local current desired nvmrc_path
-  current=$(nvm version)
-  nvmrc_path=${_NVMRC_PATH_CACHE:-$(nvm_find_nvmrc)}
-  if [[ -n "$nvmrc_path" ]]; then
-    desired=$(<"$nvmrc_path"); desired=${desired//[$'\t\r\n ']/}
-    if [[ -z "$desired" || "$desired" =~ [^a-zA-Z0-9./*-] ]]; then
-      echo -e "\033[0;31m✗ Invalid .nvmrc: ${desired:-empty}\033[0m" >&2
-      unset NVMRC_ACTIVE _NVMRC_PATH_CACHE; return 1
-    fi
-    if [[ "$desired" != "$current" ]]; then
-      if ! nvm ls "$desired" &>/dev/null; then
-        echo -e "\033[1;36m⌛ Installing Node $desired...\033[0m"
-        nvm install "$desired" >/dev/null 2>&1 || {
-          echo -e "\033[0;31m✗ Install failed\033[0m" >&2
-          unset NVMRC_ACTIVE _NVMRC_PATH_CACHE; return 1
-        }
-      fi
-      nvm use "$desired" >/dev/null 2>&1 && echo -e "\033[1;32m✓ Node $desired\033[0m"
-    else
-      echo -e "\033[1;33mℹ️ Node $desired active\033[0m"
-    fi
-    _NVMRC_PATH_CACHE=$nvmrc_path; _NVMRC_CACHE_TIME=$EPOCHSECONDS
-  elif [[ "$current" != "system" ]]; then
-    if nvm ls system | grep -q '(not installed)'; then
-      echo -e "\033[0;33m⚠️ System Node unavailable. Staying with $current\033[0m"
-    else
-      nvm use system >/dev/null 2>&1
-    fi
-  fi
-}
-
-# ─── DETECT NODE MANAGER ──────────────────────────────────────────────────────────────────────
-NODE_VERSION_MANAGER="none"
-if command -v fnm &>/dev/null; then
-  NODE_VERSION_MANAGER="fnm"
-elif [[ -s "$HOME/.nvm/nvm.sh" ]]; then
-  export NVM_DIR="$HOME/.nvm"
-  . "$NVM_DIR/nvm.sh"
-  . "$NVM_DIR/bash_completion"
-  NODE_VERSION_MANAGER="nvm"
-fi
-
-# ─── ZSH HOOK SUPPORT ─────────────────────────────────────────────────────────────────────────
-autoload -U add-zsh-hook
-
-# ─── VERSION SWITCH FUNCTION ──────────────────────────────────────────────────────────────────
-node_version_check() {
-  [[ "$NODE_VERSION_MANAGER" == "none" ]] && return
-  if [[ -f .nvmrc || -f .node-version ]]; then
-    local desired current
-    current=$(node -v 2>/dev/null)
-    desired=$(cat .nvmrc .node-version 2>/dev/null | head -n1 | tr -d '\t\r\n ')
-    case "$NODE_VERSION_MANAGER" in
-      fnm)
-        if [[ "$(fnm current)" != *"$desired"* ]]; then
-          echo -e "\033[1;33m⚠️ Switching to Node $desired (fnm)\033[0m"
-          fnm use "$desired" || fnm install "$desired"
-        fi
-        ;;
-      nvm)
-        if [[ "$(nvm current)" != "$desired" ]]; then
-          echo -e "\033[1;33m⚠️ Switching to Node $desired (nvm)\033[0m"
-          nvm use "$desired" || nvm install "$desired"
-        fi
-        ;;
-    esac
-  else
-    case "$NODE_VERSION_MANAGER" in
-      fnm)
-        echo -e "\033[1;34mℹ️ No .nvmrc or .node-version — using default fnm version (18)\033[0m"
-        fnm default 18
-        ;;
-      nvm)
-        echo -e "\033[1;34mℹ️ No .nvmrc or .node-version — using default nvm version\033[0m"
-        nvm use default
-        ;;
-    esac
-  fi
-}
-
-# ─── FEEDBACK (SHOW ONCE) ─────────────────────────────────────────────────────────────────────
-case "$NODE_VERSION_MANAGER" in
-  fnm)
-    if [[ -z "$FNM_ALREADY_INIT" ]]; then
-      echo -e "\033[1;32m✓ Using fnm for Node.js version management\033[0m"
-      echo -e "\033[1;32m✓ fnm auto-switch active\033[0m"
-      export FNM_ALREADY_INIT=1
-    fi
-    ;;
-  nvm)
-    echo -e "\033[1;33m⚠️ Using nvm fallback (fnm not found)\033[0m"
-    echo -e "\033[1;33m⚠️ nvm fallback auto-switch active\033[0m"
-    ;;
-  *)
-    echo -e "\033[1;31m❌ No Node.js version manager available\033[0m"
-    ;;
-esac
-
-# ─── ADD AUTO HOOKS ───────────────────────────────────────────────────────────────────────────
-[[ "$NODE_VERSION_MANAGER" == "nvm" ]] && add-zsh-hook chpwd load-nvmrc
-add-zsh-hook chpwd node_version_check
-node_version_check
-
-
-# Aliases
-alias nr="npm run"
-alias nrd="npm run dev"
-alias nrb="npm run build"
-alias nrt="npm test"
-alias npx="npx --no-install"
-alias npmi="npm install"
-alias npms="npm start"
-alias clean-node="rm -rf node_modules package-lock.json && npm cache clean --force && echo '\033[1;32m✓ Node modules and cache cleaned\033[0m'"
-alias clean-logs="find . -maxdepth 3 -name '*.log' -type f -delete && echo '\033[1;32m✓ Log files deleted\033[0m'"
-
-# Git
-alias gclean='git branch --merged | grep -v "\*" | xargs -n 1 git branch -d'
-alias gprune='git remote prune origin && git fetch -p'
-alias gac="git add . && git commit -m"
-alias gpf="git push --force-with-lease"
-alias gpr="git pull --rebase"
-
-# Docker
-alias dps='docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}"'
-alias dls='docker container ls -a --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}"'
-alias dc="docker-compose"
-alias dcb="docker-compose build"
-alias dcu="docker-compose up"
-
-# Utilities
-alias lg="lazygit"
-alias tl="tldr"
-alias ll='exa -l --group-directories-first --icons --git --no-permissions --no-user'
-alias gs="git status -sb"
-alias dev='cd ~/Dev && ls'
-alias vs="code"
-alias cpv='rsync -ah --info=progress2'
-alias ports='netstat -tulanp'
-
-# CI/CD Automation
-ci() {
-  if [[ -f ./.github/workflows/main.yml ]]; then
-    gh workflow run main.yml
-  elif [[ -f ./.gitlab-ci.yml ]]; then
-    gitlab-runner exec docker test
-  else
-    echo "No CI config found"
-  fi
-}
-
-# WSL Path Conversion
-cdw() {
-  local win_path=${(Q)${(z)@}}
-  local wsl_path=$(wslpath -u "$win_path" 2>/dev/null)
-  if [[ -d "$wsl_path" ]]; then
-    cd "$wsl_path" && ll
-  else
-    echo "Invalid path: $win_path"
-  fi
-}
-
-# Powerlevel10k Finalization
-[[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
-
-# Startup Performance Monitoring
-if [[ -n "$ZSH_PROFILE" ]]; then
-  zmodload zsh/zprof
-  zprof >! ~/zsh_profile.log
-fi
+# ─── FINAL MESSAGE ────────────────────────────────────────────────────────────────────────
+echo -e "\033[1;32m✔️  ZSH environment loaded successfully\033[0m"
 EOF
 }
 
