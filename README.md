@@ -1,349 +1,196 @@
-# Professional ZSH Environment Setup for MERN Stack (WSL Optimized)
+# Professional Zsh Environment Setup for MERN Stack (Optimized for WSL)
 
 ![Terminal Demo Screenshot](https://user-images.githubusercontent.com/704406/114582739-0a1c2d00-9c8e-11eb-9a7b-421d86988a7f.png)
 
-A complete terminal environment configuration for professional web development with detailed auditing and enterprise-grade security.
-
-## 📦 What This Script Installs
-
-### Core System Components
-
-| Package          | Version | Purpose                          |
-|------------------|---------|----------------------------------|
-| Zsh              | 5.8+    | Modern shell with plugin support |
-| Oh My Zsh        | Latest  | Zsh configuration framework      |
-| Powerlevel10k    | Latest  | Fast, customizable prompt theme  |
-| Nerd Fonts       | Meslo   | Iconic font for terminal symbols |
-
-### Development Tools
-
-| Tool             | Purpose                                  |
-|------------------|------------------------------------------|
-| Node.js (LTS)    | JavaScript runtime via NVM               |
-| Lazygit          | Terminal UI for Git operations           |
-| exa              | Modern replacement for ls                |
-| fzf              | Fuzzy finder integration                 |
-| Docker CE        | Containerization platform                |
-| Docker Compose   | Multi-container orchestration            |
-
-### ZSH Plugins (23 Total)
-
-| Plugin                       | Functionality                              |
-|------------------------------|--------------------------------------------|
-| zsh-autosuggestions          | Suggests commands as you type              |
-| zsh-syntax-highlighting      | Colors commands for validation             |
-| you-should-use               | Suggests shorter command alternatives      |
-| fzf-tab                      | Fuzzy completion for Zsh                   |
-| zsh-history-substring-search | Better history navigation                   |
-| alias-tips                   | Warns when aliases are available            |
-| web-search                   | Direct search from terminal                 |
-| safe-paste                   | Safe clipboard pasting                      |
-| copybuffer                   | Copies command output to clipboard          |
-| git                          | Git aliases + status in prompt              |
-| docker                       | Docker completion + helper aliases          |
-| npm                          | NPM completion + project awareness          |
-
-### .zshrc Modifications
-
-```bash
-# Key Configuration Changes
-- 15+ Developer Aliases (npm, git, docker)
-- PATH enhancements (~/.npm-global/bin added)
-- Instant Prompt configuration for P10k
-- Auto-switching Node versions via .nvmrc
-- WSL path conversion (cdw command)
-- CI/CD workflow shortcuts (gh/gitlab)
-- Performance optimizations:
-  - DISABLE_AUTO_UPDATE=true
-  - ZSH_HIGHLIGHT_MAXLENGTH=300
-  - Manual compinit initialization
-```
-
-## 📦 Node.js Version Management
-
-### Automated Version Switching with `.nvmrc`
-
-The script configures automatic Node.js version switching through these components:
-
-```zsh
-autoload -U add-zsh-hook
-load-nvmrc() {
-  local current_node=$(nvm version)
-  local nvmrc_path=$(nvm_find_nvmrc)
-
-  if [ -n "$nvmrc_path" ]; then
-    local desired_node=$(cat "$nvmrc_path")
-    if [ "$desired_node" != "$current_node" ]; then
-      nvm install "$desired_node"
-      nvm use "$desired_node"
-    fi
-  elif [ "$current_node" != "system" ]; then
-    nvm use system >/dev/null 2>&1 || true
-  fi
-}
-add-zsh-hook chpwd load-nvmrc
-load-nvmrc
-```
-
-### What This Does
-
-- **Automatic Detection**: Scans directories for `.nvmrc` files when you `cd`
-- **Version Switching**: Changes Node.js version to match `.nvmrc`
-- **Auto-Install**: Installs missing Node versions if needed
-- **Fallback**: Uses system Node when no `.nvmrc` found
-
-### Setup for Projects
-
-1. **Create `.nvmrc` File**
-   In your project root:
-
-   ```bash
-   node -v > .nvmrc  # For existing projects
-   ```
-
-   or manually specify version:
-
-   ```bash
-   echo "20.19.0" > .nvmrc
-   ```
-
-2. **Supported Version Formats**
-   `.nvmrc` can specify:
-   - Exact version: `20.19.0`
-   - LTS names: `lts/hydrogen`
-   - Version patterns: `18.x`, `>=16.13.0 <17.0.0`
-
-3. **Workflow Example**
-
-   ```bash
-   cd my-project/     # Directory with .nvmrc
-   # [Now using Node v20.19.0]
-
-   git pull
-   npm install
-
-   cd ../legacy-project/  # Directory without .nvmrc
-   # [Falling back to system Node v18.12.1]
-   ```
-
-### Key Features
-
-- **Multi-level Search**: Looks for `.nvmrc` in parent directories
-- **Silent Operation**: Only shows output when changing versions
-- **Project Isolation**: Version changes don't affect other terminals
-- **CI/CD Ready**: Works in scripts and automation environments
-
-### Troubleshooting
-
-**Q**: Version isn't switching automatically
-**Fix**:
-
-```bash
-# 1. Verify .nvmrc exists
-ls -a | grep .nvmrc
-
-# 2. Check file contents
-cat .nvmrc
-
-# 3. Manually trigger detection
-load-nvmrc
-```
-
-**Q**: Getting "Version not found" error
-**Fix**: Install available versions with:
-
-```bash
-nvm ls-remote  # List available versions
-nvm install <version-from-list>
-```
-
-**Q**: Want to disable auto-switching?
-**Remove Hook**:
-
-```zsh
-# Add to ~/.zshrc
-add-zsh-hook -d chpwd load-nvmrc
-```
-
-## 🛠️ Installation Guide
-
-### System Requirements
-
-- WSL2/Ubuntu 22.04 LTS or newer
-- Minimum 2GB disk space
-- Administrator privileges (for package installs)
-
-### Step-by-Step Installation
-
-1. **Download Script**
-
-   ```bash
-   curl -O https://yourdomain.com/setup-zsh.sh
-   ```
-
-2. **Make Executable**
-
-   ```bash
-   chmod +x setup-zsh.sh
-   ```
-
-3. **Run Installation**
-
-   ```bash
-   ./setup-zsh.sh
-   ```
-
-### What Happens During Installation
-
-1. **System Preparation Phase**
-   - Updates APT repositories
-   - Installs 17 required packages:
-
-     ```bash
-     zsh git curl wget unzip fonts-powerline locales gpg docker.io
-     docker-compose exa ripgrep fd-find jq
-     ```
-
-2. **Security Setup**
-   - Verifies checksums for all downloads
-   - Creates pre-installation backups
-   - Limits sudo privileges to essential operations
-
-3. **Core Installation**
-   - Oh My Zsh with 23 plugins
-   - Powerlevel10k theme configuration
-   - Node.js LTS via NVM (with auto-version switching)
-   - Lazygit 0.40+ installation
-
-4. **Configuration**
-   - Creates/modifies 6 config files:
-     - ~/.zshrc (main configuration)
-     - ~/.p10k.zsh (theme settings)
-     - ~/.npm-completion (npm autocomplete)
-     - ~/.mongodb-completion (MongoDB helpers)
-     - ~/.fonts/ (Nerd Fonts directory)
-     - /etc/locale.gen (UTF-8 setup)
-
-5. **Post-Install**
-   - Sets Zsh as default shell
-   - Runs initial compinit
-   - Creates restoration point
-
-## 🚀 Post-Installation Steps
-
-1. **Reload Shell**
-
-   ```bash
-   exec zsh
-   ```
-
-2. **Configure Powerlevel10k**
-
-   ```bash
-   p10k configure
-   ```
-
-   - Recommended settings:
-     - Unicode characters
-     - Lean prompt style
-     - 12-hour time format
-     - Compact spacing
-
-3. **Verify Installations**
-
-   ```bash
-   lg --version       # Should show Lazygit 0.40+
-   exa --version      # Modern ls replacement
-   node --version     # Should show LTS version
-   ```
-
-## 🔧 Customization Guide
-
-### Adding Custom Aliases
-
-Add to `~/.zshrc`:
-
-```bash
-# MERN Development
-alias nextlog="tail -f .next/logs/output.log"
-alias mongo-start="sudo systemctl start mongod"
-
-# Deployment
-alias deploy-stage="npm run build && scp -r dist/ user@stage:/app"
-```
-
-### Plugin Management
-
-Enable/disable plugins in `~/.zshrc`:
-
-```bash
-plugins=(
-  git
-  docker
-  #web-search  <-- Disable by commenting
-  zsh-autosuggestions
-)
-```
-
-## ⚠️ Troubleshooting
-
-### Common Issues
-
-1. **Missing Icons**:
-
-   ```bash
-   sudo apt install fonts-powerline
-   fc-cache -fv
-   ```
-
-2. **Web-Search Plugin Error**:
-
-   ```bash
-   nano $ZSH/plugins/web-search/web-search.plugin.zsh
-   # Change line 103 to:
-   declare -A urls=([DUCKDUCKGO]="https://duckduckgo.com/?q=")
-   ```
-
-3. **Shell Not Changing**:
-
-   ```bash
-   chsh -s $(which zsh)
-   exec zsh
-   ```
-
-## 🔄 Maintenance
-
-### Uninstallation
-
-```bash
-./safe-uninstall.sh
-```
-
-- Removes 42+ components including:
-  - All ZSH plugins and themes
-  - Node.js versions
-  - Configuration files
-  - System packages (optional)
-
-### Updates
-
-```bash
-# Update plugins
-zsh-mern-setup/ $ git pull origin main
-# Re-run setup
-./setup.sh --update
-```
+This is a complete, ready-to-use Zsh environment setup tailored for MERN stack developers working primarily on Windows Subsystem for Linux (WSL). It combines modern tooling, smart version management, and optimized plugins to create a smooth, productive terminal experience.
 
 ---
 
-**Maintained by**: Ahmed Monib
-**Security Contact**: <ahmedmounib2@gmail.com>
-**Last Audited**: 2025-05-24
-**Compatibility Matrix**:
+## What Does This Setup Provide?
+
+### Core Shell Environment
+
+| Component        | Version/Info  | Purpose                                           |
+|------------------|---------------|--------------------------------------------------|
+| **Zsh**          | 5.8+          | A powerful shell with extensibility and plugins  |
+| **Oh My Zsh**    | Latest        | Framework to manage themes and plugins (theme only) |
+| **Powerlevel10k**| Latest        | Highly customizable, fast prompt with icons      |
+| **Meslo Nerd Font** | 3.0.2       | Font with icons needed for Powerlevel10k          |
+| **Zinit**        | 3.15          | Fast, flexible plugin manager for Zsh             |
+
+### Development Utilities
+
+| Tool             | Role                                                 |
+|------------------|------------------------------------------------------|
+| **Node.js (LTS)**| JavaScript runtime, managed with FNM (Fast Node Manager) |
+| **Lazygit**      | Interactive terminal UI for git                       |
+| **exa**          | Modern alternative to `ls` with colors and icons    |
+| **fzf-tab**      | Fuzzy finder integration for enhanced tab completion |
+| **Docker CE**    | Container platform for building and running apps    |
+| **Docker Compose**| Tool for defining and managing multi-container setups |
+
+### Zinit Plugins for Speed and Productivity
+
+| Plugin                     | What It Does                                    |
+|----------------------------|------------------------------------------------|
+| **zsh-autosuggestions**    | Suggests commands based on history as you type |
+| **zsh-syntax-highlighting**| Colors commands for easier reading and errors  |
+| **you-should-use**          | Recommends shorter, better commands             |
+| **fzf-tab**                | Fuzzy completion to quickly find commands/files |
+| **zsh-history-substring-search** | Search shell history more intuitively        |
+| **alias-tips**             | Warns if an alias can replace your typed command|
+| **zsh-completions**        | Adds extra completion scripts                    |
+| **Oh My Zsh Plugins**      | Docker, git, web-search snippets                 |
+
+---
+
+## Important `.zshrc` Enhancements
+
+- Over **15 developer-friendly aliases** for npm, git, docker, and more
+- Adds `~/.npm-global/bin` to PATH for global npm binaries
+- Instant prompt enabled for Powerlevel10k for faster shell startup
+- Automatic Node.js version switching with FNM (Fast Node Manager)
+- Custom `cdw` command to switch directories with WSL path conversion
+- CI/CD shortcuts for GitHub and GitLab workflows
+- Zinit configured to load plugins **in parallel** and **cache** compiled plugins for speed
+
+---
+
+## Node.js Version Management via FNM (Fast Node Manager)
+
+This setup includes an **automatic Node.js version switcher** that reads `.nvmrc` files in your project directories and:
+
+- Switches Node versions immediately on directory change (`cd`)
+- Shows a colored message indicating the version switch
+- Automatically installs missing Node versions
+- Supports nested projects with their own `.nvmrc` files
+- Silent and unobtrusive unless switching versions
+- Fall back to NVM if FNM fails.
+
+### How It Works (Inside `.zshrc`)
+
+```zsh
+eval "$(fnm env --use-on-cd)"
+
+fnm_check_version() {
+  local desired current
+  [[ -f .nvmrc ]] && desired=$(<.nvmrc) || return
+  current=$(node -v 2>/dev/null || echo "none")
+
+  if [[ "$current" != "v$desired" ]]; then
+    echo -e "\033[1;33m⚠️ Switching to Node v$desired\033[0m"
+    fnm use "$desired" || fnm install "$desired"
+  fi
+}
+add-zsh-hook chpwd fnm_check_version
+```
+
+## How To Use
+
+- Add .nvmrc in your project root specifying Node version:
+
+```bash
+echo "20.19.0" > .nvmrc
+```
+
+- Or for existing projects:
+
+```bash
+node -v > .nvmrc
+```
+
+## 🛠️ Installation steps
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/ahmedmounib2/my-zsh-setup.git
+
+# 2. Change directory into the repo folder
+cd my-zsh-setup
+
+# 3. Make the install script executable
+chmod +x setup-zsh.sh
+
+# 4. Run the installer script
+./setup-zsh.sh
+```
+
+## Optional: One-liner (if you want to avoid cloning manually)
+
+#### You can do it with git clone and run the script in one command like
+
+```bash
+git clone https://github.com/ahmedmounib2/my-zsh-setup.git && cd my-zsh-setup && chmod +x setup-zsh.sh && ./setup-zsh.sh
+```
+
+## 😰 Uninstall steps
+
+```bash
+# Method 1: Clone and run uninstall script
+git clone https://github.com/ahmedmounib2/my-zsh-setup.git
+cd my-zsh-setup/uninstall-setup-zsh
+chmod +x uninstall.sh
+./uninstall.sh
+```
+
+```bash
+#Method 2: One-liner (clone & run uninstall script)
+curl -O https://raw.githubusercontent.com/ahmedmounib2/my-zsh-setup/main/uninstall-setup-zsh/uninstall.sh
+chmod +x uninstall.sh
+./uninstall.sh
+```
+
+## 🔧 Maintenance
+
+**Update components**:
+
+```bash Download and run the installer script
+
+# Configure your Powerlevel10k prompt interactively
+p10k configure
+
+# Verify installation
+fnm --version && zinit --version
+```
+
+```bash
+zinit self-update && zinit update --all
+fnm install --latest
+Uninstall:
+```
+
+## ⚠️ What the Uninstall Script Does Not Remove
+
+The uninstall script is designed to safely and thoroughly clean up your ZSH setup, but a few components are intentionally left untouched:
+
+- nvm
+- ~/.zsh_history
+- Docker & Docker Compose
+- System fzf
+- Custom alias files
+
+**Node version not switching**:
+
+````bash
+fnm use 20 --install && fnm default 20
+````
+
+**Missing plugins**:
+
+```bash
+zinit compile --all
+```
+
+- Maintained by: Ahmed Monib
+- Security Contact: <ahmedmounib2@gmail.com>
+- Last Updated: 2024-05-24
+
+## Compatibility
 
 - WSL2 ✅
-- Ubuntu 22.04+ ✅
-- Debian 11+ ✅
-- ARM64 (Experimental) ⚠️
 
-**License**: MIT
+- Ubuntu 22.04+ ✅
+
+- ARM64 ⚠️ Experimental
+
+## License: MIT

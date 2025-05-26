@@ -1,49 +1,36 @@
 #!/bin/bash
-# SAFE ZSH Environment Uninstaller (Full Removal)
+# SAFE ZSH Environment Uninstaller (Zinit/FNM Edition)
 set -euo pipefail
 trap 'echo -e "\033[1;31m❌ Error on line $LINENO\033[0m"' ERR
 
-echo -e "\033[1;31m🔥 Starting full uninstall...\033[0m"
+echo -e "\033[1;31m🔥 Starting safe uninstall...\033[0m"
 
-# ========================
-# Restore Default Shell
-# ========================
+# Restore original shell if zsh was default
 current_shell=$(basename "$SHELL")
 if [[ "$current_shell" == "zsh" ]]; then
   echo -e "\033[1;33m🔄 Reverting to bash...\033[0m"
   chsh -s "$(which bash)" 2>/dev/null || true
 fi
 
-# ========================
-# Core Components Removal
-# ========================
+# Core components and tools to remove
 declare -a components=(
   "$HOME/.oh-my-zsh"
+  "$HOME/.zinit"
   "$HOME/.p10k.zsh"
   "$HOME/.cache/p10k"
-  "$HOME/.nvm"
-  "$HOME/.npm-completion"
-  "$HOME/.mongodb-completion"
-  "$HOME/.fonts/Meslo"  # Nerd Fonts
+  "$HOME/.local/share/fnm"
+  "$HOME/.fonts/Meslo"
+  "$HOME/.npm-global"
+  "/usr/local/bin/lazygit"
+  "/usr/local/bin/exa"
+  "/usr/local/bin/fzf-tab"
+  "/usr/local/bin/docker"
+  "/usr/local/bin/docker-compose"
+  "$HOME/.cache/zinit"
+  "$HOME/.local/share/zinit"
 )
 
-# ========================
-# Plugin & Binary Removal
-# ========================
-declare -a plugins=(
-  "$HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
-  "$HOME/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
-  "$HOME/.oh-my-zsh/custom/plugins/you-should-use"
-  "$HOME/.oh-my-zsh/custom/plugins/fzf-tab"
-  "$HOME/.oh-my-zsh/custom/plugins/zsh-history-substring-search"
-  "$HOME/.oh-my-zsh/custom/plugins/alias-tips"
-  "$HOME/.oh-my-zsh/custom/plugins/web-search"
-  "/usr/local/bin/lazygit"  # Lazygit binary
-)
-
-# ========================
-# Safe Removal Function
-# ========================
+# Function to safely remove files/directories
 safe_remove() {
   for path in "$@"; do
     if [ -e "$path" ]; then
@@ -55,15 +42,10 @@ safe_remove() {
   done
 }
 
-# ========================
-# Execute Removals
-# ========================
+# Execute removals
 safe_remove "${components[@]}"
-safe_remove "${plugins[@]}"
 
-# ========================
-# Restore Original .zshrc
-# ========================
+# Restore original .zshrc if backup exists
 find_backup() {
   ls -t "$HOME"/.zshrc.bak.* 2>/dev/null | head -n1
 }
@@ -72,45 +54,36 @@ if latest_backup=$(find_backup); then
   echo -e "\033[1;35m⏪ Restoring .zshrc from ${latest_backup}\033[0m"
   mv -f "$latest_backup" "$HOME/.zshrc"
 else
-  [ -f "$HOME/.zshrc" ] && {
+  if [ -f "$HOME/.zshrc" ]; then
     echo -e "\033[1;31m🗑️  Removing custom .zshrc\033[0m"
     rm -f "$HOME/.zshrc"
-  }
-fi
-
-# ========================
-# System Package Removal
-# ========================
-read -p "❓ Remove system packages (zsh, fonts, tools)? [y/N] " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-  echo -e "\033[1;33m♻️  Removing installed packages...\033[0m"
-  sudo apt remove -y --purge \
-    zsh fonts-powerline locales \
-    exa ripgrep fd-find \
-    docker.io docker-compose
-
-  echo -e "\033[1;33m🧹 Cleaning up dependencies...\033[0m"
-  sudo apt autoremove -y
-  sudo apt clean
-fi
-
-# ========================
-# Global NPM Cleanup
-# ========================
-if command -v npm >/dev/null; then
-  read -p "❓ Remove global npm packages? [y/N] " -n 1 -r
-  echo
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "\033[1;33m♻️  Removing global npm packages...\033[0m"
-    npm ls -g --depth=0 | awk -F ' ' '{print $2}' | grep -v '^npm@' | xargs -r npm remove -g
   fi
 fi
 
-# ========================
-# Final Cleanup
-# ========================
-echo -e "\033[1;33m🧹 Cleaning caches...\033[0m"
-rm -rf ~/.npm ~/.cache/npm ~/.local/share/lazygit
+# Remove FNM environment variables and PATH modifications from shell profiles
+shell_profiles=(
+  "$HOME/.bashrc"
+  "$HOME/.zshrc"
+  "$HOME/.profile"
+)
 
-echo -e "\033[1;32m✅ Full uninstall complete! Start a new terminal session.\033[0m"
+for profile in "${shell_profiles[@]}"; do
+  if [ -f "$profile" ]; then
+    echo -e "\033[1;33m🧹 Cleaning FNM and PATH entries from ${profile}\033[0m"
+    sed -i '/fnm/d' "$profile"
+    sed -i '/FNM_PATH/d' "$profile"
+    sed -i '/\.npm-global/d' "$profile"
+    sed -i '/powerlevel10k/d' "$profile"
+    sed -i '/ZINIT/d' "$profile"
+  fi
+done
+
+# Optionally remove system packages installed (adjust as per install script)
+read -p "Remove zsh and other installed packages (exa, lazygit, ripgrep, fd-find)? [y/N] " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  sudo apt remove -y --purge zsh fonts-powerline locales exa ripgrep fd-find lazygit
+  sudo apt autoremove -y
+fi
+
+echo -e "\033[1;32m✅ Safe uninstall complete. Please start a new terminal session.\033[0m"
